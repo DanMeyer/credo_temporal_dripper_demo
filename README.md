@@ -1,17 +1,27 @@
 # Credo Temporal Dripper Demo
 
-This is a runnable reference implementation of the approach we discussed:
+## Highlights:
 - **Temporal** workflows with **child workflows** (`DocEx_PollAndFetch`, `ConvertAll`)
-- **Dripper** strategy for API rate limiting (Redis Streams or no-op)
+- **Dripper** strategy for API rate limiting via tokens (via Redis Streams)
 - **Sharded task queues** (`general`, `status`, `convert`)
+    - `CONVERT_MAX` env variable limits the number of `convert` tasks
 - **Docker Compose** for local runs
 - **HTTP fakes** for DocumentExchange and TaskTracker
 - Dummy Activities that **sleep and CSV-log** start/finish and args
 
-> Note: Activities simulate I/O only; they don't require real storage or DB.
+## Future work: External service outages
+> DocumentExchange and TaskTracker will occasionally have outages, describe (don’t code) how you would handle that
+
+Some strategies:
+- broadly, let Temporal handle as much of this as possible
+- smart backoff strategies
+    - we want to keep retrying the service forever (so we can self-heal) BUT at increasing intervals (so we don't try every N seconds for 2 straight hours for every workflow)
+- circuit breaker around the external resource (stop trying for M minutes after N failures)
+    - ideally can resume smartly for everyone after a success
 
 ## Quickstart
 
+### Standard Startup
 ```bash
 # 1) Build and start the stack (Temporal+Redis+workers+stubs)
 docker compose up --build
@@ -20,9 +30,77 @@ docker compose up --build
 docker compose run --rm demo python app/demo_run.py --patient-id P123
 ```
 
-Default **LIMITER_MODE** is `none`. To enable the **dripper** limiter:
-- Set `LIMITER_MODE=dripper` on the worker services in `docker-compose.yml`
-- Keep the `dripper` service enabled
+### Complete Docker Environment Reset
+
+If you need to completely clean your Docker environment and start fresh:
+
+```bash
+# 1) Nuclear option - remove ALL Docker resources
+docker system prune -a --volumes --force
+
+# 2) Stop and remove any existing containers/volumes
+docker compose down --volumes --remove-orphans
+
+# 3) Rebuild everything from scratch (no cache)
+docker compose build --no-cache
+
+# 4) Start all services
+docker compose up -d
+
+# 5) Verify all services are running
+docker compose ps
+
+# 6) Check demo logs
+docker compose logs demo
+
+# 7) Run the demo
+docker compose run --rm demo python app/demo_run.py --patient-id P123
+
+# 8) Check activity log
+cat data/activity_log.csv
+```
+
+### Verification Steps
+
+After starting the services, verify everything is working:
+
+```bash
+# Check all containers are healthy
+docker compose ps
+
+# View demo execution logs
+docker compose logs demo
+
+# View dripper activity
+docker compose logs dripper
+
+# View worker activity
+docker compose logs worker-general worker-convert worker-status
+
+# Run the demo to verify workflow execution
+docker compose run --rm demo python app/demo_run.py --patient-id P123
+
+# Check the activity log for workflow execution
+tail -f data/activity_log.csv
+
+# Access Temporal UI (optional)
+open http://localhost:8080
+```
+
+**Expected Output**: You should see patient processing with activities like:
+- `GetPatientFromDB`
+- `TaskTracker_Create`
+- `DocEx_Search`
+- `DocEx_CheckStatus` (multiple times with rate limiting)
+- `DocEx_DownloadAndExtract`
+- Multiple `ConvertFile` operations
+- Multiple `PutToStorage` operations
+- `TaskTracker_UpdateStatus`
+- `GenerateReport`
+- `TaskTracker_AppendReport`
+
+Default **LIMITER_MODE** is `dripper`. To disable the limiter:
+- Set `LIMITER_MODE=none` on the worker services in `docker-compose.yml`
 
 ## Structure
 
@@ -51,9 +129,3 @@ Environment variables (see `docker-compose.yml`):
 - `DOCEX_SEARCH_RATE`: e.g., `10/min`
 - `TASKTRACKER_RATE`: e.g., `10/sec`
 - `REDIS_URL`, `TEMPORAL_ADDRESS`, `STUB_DOCX_URL`, `STUB_TT_URL`
-
-## Notes
-
-- Dripper uses Redis Streams with **no backlog** catch-up (avoids bursts).
-- Each external call blocks on a token before executing when limiter enabled.
-- Conversion queue is **bulkheaded** with low concurrency to respect RAM (single-threaded converts).
