@@ -13,19 +13,22 @@ class PatientIngestWorkflow:
     async def run(self, patient_id: str) -> str:
         workflow.logger.info("PatientIngestWorkflow started", extra={"patient_id": patient_id})
         first, last = await workflow.execute_activity(
-            act.get_patient_from_db, patient_id,
+            act.get_patient_from_db,
+            args=[patient_id],
             schedule_to_close_timeout=timedelta(seconds=10),
         )
         workflow.logger.info("Retrieved patient data", extra={"first": first, "last": last})
 
         task_id = await workflow.execute_activity(
-            act.tasktracker_create, patient_id, first, last,
+            act.tasktracker_create,
+            args=[patient_id, first, last],
             schedule_to_close_timeout=timedelta(seconds=10),
         )
         workflow.logger.info("Created task", extra={"task_id": task_id})
         
         job_id = await workflow.execute_activity(
-            act.docex_search, first, last,
+            act.docex_search,
+            args=[first, last],
             schedule_to_close_timeout=timedelta(seconds=15),
             retry_policy=RetryPolicy(initial_interval=timedelta(seconds=1), maximum_interval=timedelta(seconds=10), maximum_attempts=10),
         )
@@ -36,20 +39,25 @@ class PatientIngestWorkflow:
 
         if not archive_url:
             await workflow.execute_activity(
-                act.tasktracker_update_status, task_id, "DOCUMENTS_NOT_FOUND",
+                act.tasktracker_update_status,
+                args=[task_id, "DOCUMENTS_NOT_FOUND"],
                 schedule_to_close_timeout=timedelta(seconds=10),
             )
             report = await workflow.execute_activity(
-                act.generate_report, [], schedule_to_close_timeout=timedelta(seconds=10),
+                act.generate_report,
+                args=[[]],
+                schedule_to_close_timeout=timedelta(seconds=10),
             )
             await workflow.execute_activity(
-                act.tasktracker_append_report, task_id, report,
+                act.tasktracker_append_report,
+                args=[task_id, report],
                 schedule_to_close_timeout=timedelta(seconds=10),
             )
             return "NOT_FOUND"
 
         files = await workflow.execute_activity(
-            act.docex_download_and_extract, archive_url,
+            act.docex_download_and_extract,
+            args=[archive_url],
             schedule_to_close_timeout=timedelta(seconds=30),
             retry_policy=RetryPolicy(initial_interval=timedelta(seconds=1), maximum_interval=timedelta(seconds=10), maximum_attempts=5),
         )
@@ -58,15 +66,18 @@ class PatientIngestWorkflow:
         converted = await workflow.execute_child_workflow(ConvertAll, files)
 
         await workflow.execute_activity(
-            act.tasktracker_update_status, task_id, "DOCUMENTS_FOUND",
+            act.tasktracker_update_status,
+            args=[task_id, "DOCUMENTS_FOUND"],
             schedule_to_close_timeout=timedelta(seconds=10),
         )
         report = await workflow.execute_activity(
-            act.generate_report, converted,
+            act.generate_report,
+            args=[converted],
             schedule_to_close_timeout=timedelta(seconds=10),
         )
         await workflow.execute_activity(
-            act.tasktracker_append_report, task_id, report,
+            act.tasktracker_append_report,
+            args=[task_id, report],
             schedule_to_close_timeout=timedelta(seconds=10),
         )
         return "FOUND"
@@ -78,7 +89,8 @@ class DocEx_PollAndFetch:
         backoff = 0.5
         while True:
             status = await workflow.execute_activity(
-                act.docex_check_status, job_id,
+                act.docex_check_status,
+                args=[job_id],
                 schedule_to_close_timeout=timedelta(seconds=5),
                 retry_policy=RetryPolicy(initial_interval=timedelta(seconds=0.5), maximum_interval=timedelta(seconds=5), maximum_attempts=3),
                 task_queue="status",
@@ -101,12 +113,14 @@ class ConvertAll:
         async def one(f: str):
             async with sem:
                 pdf = await workflow.execute_activity(
-                    act.convert_file, f,
+                    act.convert_file,
+                    args=[f],
                     schedule_to_close_timeout=timedelta(seconds=30),
                     task_queue="convert",
                 )
                 await workflow.execute_activity(
-                    act.put_to_storage, pdf,
+                    act.put_to_storage,
+                    args=[pdf],
                     schedule_to_close_timeout=timedelta(seconds=10),
                     task_queue="convert",
                 )
