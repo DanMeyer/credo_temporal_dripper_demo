@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 from typing import Optional, List
@@ -10,23 +11,28 @@ with workflow.unsafe.imports_passed_through():
 class PatientIngestWorkflow:
     @workflow.run
     async def run(self, patient_id: str) -> str:
+        workflow.logger.info("PatientIngestWorkflow started", extra={"patient_id": patient_id})
         first, last = await workflow.execute_activity(
             act.get_patient_from_db, patient_id,
             schedule_to_close_timeout=timedelta(seconds=10),
         )
+        workflow.logger.info("Retrieved patient data", extra={"first": first, "last": last})
 
         task_id = await workflow.execute_activity(
             act.tasktracker_create, patient_id, first, last,
             schedule_to_close_timeout=timedelta(seconds=10),
         )
-
+        workflow.logger.info("Created task", extra={"task_id": task_id})
+        
         job_id = await workflow.execute_activity(
             act.docex_search, first, last,
             schedule_to_close_timeout=timedelta(seconds=15),
             retry_policy=RetryPolicy(initial_interval=timedelta(seconds=1), maximum_interval=timedelta(seconds=10), maximum_attempts=10),
         )
+        workflow.logger.info("Started DocEx search", extra={"job_id": job_id})
 
         archive_url = await workflow.execute_child_workflow(DocEx_PollAndFetch, job_id)
+        workflow.logger.info("DocEx polling completed", extra={"archive_url": archive_url})
 
         if not archive_url:
             await workflow.execute_activity(
@@ -47,7 +53,8 @@ class PatientIngestWorkflow:
             schedule_to_close_timeout=timedelta(seconds=30),
             retry_policy=RetryPolicy(initial_interval=timedelta(seconds=1), maximum_interval=timedelta(seconds=10), maximum_attempts=5),
         )
-
+        workflow.logger.info("Downloaded files", extra={"file_count": len(files)})
+        
         converted = await workflow.execute_child_workflow(ConvertAll, files)
 
         await workflow.execute_activity(
@@ -107,5 +114,3 @@ class ConvertAll:
 
         await workflow.wait_for_all([one(f) for f in files])
         return results
-
-from datetime import timedelta
