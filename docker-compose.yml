@@ -1,4 +1,3 @@
-version: "3.9"
 services:
   redis:
     image: redis:7
@@ -7,23 +6,51 @@ services:
   postgres:
     image: postgres:15
     environment:
-      - POSTGRES_DB=temporal
-      - POSTGRES_USER=temporal
-      - POSTGRES_PASSWORD=temporal
-    ports: ["5432:5432"]
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   temporal:
-    image: temporalio/auto-setup:1.23
+    image: temporalio/auto-setup:1.29.0
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      - DB=postgresql
-      - POSTGRES_SEEDS=postgres
+      #- DB=postgresql
+      - DB=postgres12_pgx
+      - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
-      - POSTGRES_DB=temporal
-    ports: ["7233:7233"]
-    depends_on: [postgres]
+      - POSTGRES_SEEDS=postgres
+      # Use SQL visibility (no Elasticsearch)
+      - SKIP_DEFAULT_NAMESPACE=false
+      - DEFAULT_NAMESPACE=default
+    ports:
+      - "7233:7233"   # gRPC
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "workflow", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  temporal-ui:
+    image: temporalio/ui:2.30.0
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_UI_PORT=8080
+      # for local dev; restrict as needed
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8080
+    ports:
+      - "8080:8080"
 
   dripper:
     build: .
@@ -32,7 +59,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - RATES=docx:status=10/sec,docx:search_download=10/min,tasktracker:writes=10/sec
       - NO_BACKLOG=true
-    depends_on: [redis]
+    depends_on:
+      redis:
+        condition: service_started
     restart: unless-stopped
 
   stub-docx:
@@ -60,7 +89,15 @@ services:
       - STUB_TT_URL=http://stub-tasktracker:9001
       - CSV_PATH=/workspace/data/activity_log.csv
     volumes: ["./data:/workspace/data"]
-    depends_on: [temporal, redis, stub-docx, stub-tasktracker]
+    depends_on:
+      temporal:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      stub-docx:
+        condition: service_started
+      stub-tasktracker:
+        condition: service_started
     restart: unless-stopped
 
   worker-status:
@@ -74,7 +111,15 @@ services:
       - STUB_TT_URL=http://stub-tasktracker:9001
       - CSV_PATH=/workspace/data/activity_log.csv
     volumes: ["./data:/workspace/data"]
-    depends_on: [temporal, redis, stub-docx, stub-tasktracker]
+    depends_on:
+      temporal:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      stub-docx:
+        condition: service_started
+      stub-tasktracker:
+        condition: service_started
     restart: unless-stopped
 
   worker-convert:
@@ -93,7 +138,15 @@ services:
         limits:
           cpus: "2"
           memory: 4g
-    depends_on: [temporal, redis, stub-docx, stub-tasktracker]
+    depends_on:
+      temporal:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      stub-docx:
+        condition: service_started
+      stub-tasktracker:
+        condition: service_started
     restart: unless-stopped
 
   demo:
@@ -101,7 +154,15 @@ services:
     command: python app/demo_run.py --patient-id P123
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-    depends_on: [worker-general, worker-status, worker-convert]
+    depends_on:
+      temporal:
+        condition: service_healthy
+      worker-general:
+        condition: service_started
+      worker-status:
+        condition: service_started
+      worker-convert:
+        condition: service_started
 
 volumes:
   postgres_data:
