@@ -4,11 +4,26 @@ services:
     image: redis:7
     ports: ["6379:6379"]
 
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=temporal
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   temporal:
     image: temporalio/auto-setup:1.23
     environment:
       - DB=postgresql
+      - POSTGRES_SEEDS=postgres
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_DB=temporal
     ports: ["7233:7233"]
+    depends_on: [postgres]
 
   dripper:
     build: .
@@ -87,3 +102,6 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
     depends_on: [worker-general, worker-status, worker-convert]
+
+volumes:
+  postgres_data:
