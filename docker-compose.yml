@@ -1,0 +1,89 @@
+version: "3.9"
+services:
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  temporal:
+    image: temporalio/auto-setup:1.23
+    environment:
+      - DB=postgresql
+    ports: ["7233:7233"]
+
+  dripper:
+    build: .
+    command: python tools/dripper.py
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RATES=docx:status=10/sec,docx:search_download=10/min,tasktracker:writes=10/sec
+      - NO_BACKLOG=true
+    depends_on: [redis]
+    restart: unless-stopped
+
+  stub-docx:
+    build: .
+    command: python stubs/docx_stub.py
+    environment:
+      - PORT=9000
+    ports: ["9000:9000"]
+
+  stub-tasktracker:
+    build: .
+    command: python stubs/tasktracker_stub.py
+    environment:
+      - PORT=9001
+    ports: ["9001:9001"]
+
+  worker-general:
+    build: .
+    command: python app/run_worker.py --queue general --max-activities 50
+    environment:
+      - LIMITER_MODE=none            # set to 'dripper' to enable the limiter
+      - REDIS_URL=redis://redis:6379/0
+      - TEMPORAL_ADDRESS=temporal:7233
+      - STUB_DOCX_URL=http://stub-docx:9000
+      - STUB_TT_URL=http://stub-tasktracker:9001
+      - CSV_PATH=/workspace/data/activity_log.csv
+    volumes: ["./data:/workspace/data"]
+    depends_on: [temporal, redis, stub-docx, stub-tasktracker]
+    restart: unless-stopped
+
+  worker-status:
+    build: .
+    command: python app/run_worker.py --queue status --max-activities 20
+    environment:
+      - LIMITER_MODE=none
+      - REDIS_URL=redis://redis:6379/0
+      - TEMPORAL_ADDRESS=temporal:7233
+      - STUB_DOCX_URL=http://stub-docx:9000
+      - STUB_TT_URL=http://stub-tasktracker:9001
+      - CSV_PATH=/workspace/data/activity_log.csv
+    volumes: ["./data:/workspace/data"]
+    depends_on: [temporal, redis, stub-docx, stub-tasktracker]
+    restart: unless-stopped
+
+  worker-convert:
+    build: .
+    command: python app/run_worker.py --queue convert --max-activities 2
+    environment:
+      - LIMITER_MODE=none
+      - REDIS_URL=redis://redis:6379/0
+      - TEMPORAL_ADDRESS=temporal:7233
+      - STUB_DOCX_URL=http://stub-docx:9000
+      - STUB_TT_URL=http://stub-tasktracker:9001
+      - CSV_PATH=/workspace/data/activity_log.csv
+    volumes: ["./data:/workspace/data"]
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4g
+    depends_on: [temporal, redis, stub-docx, stub-tasktracker]
+    restart: unless-stopped
+
+  demo:
+    build: .
+    command: python app/demo_run.py --patient-id P123
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on: [worker-general, worker-status, worker-convert]
