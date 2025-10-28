@@ -82,7 +82,7 @@ services:
     build: .
     command: python app/run_worker.py --queue general --max-activities 50
     environment:
-      - LIMITER_MODE=none            # set to 'dripper' to enable the limiter
+      - LIMITER_MODE=dripper            # set to 'dripper' to enable the limiter
       - REDIS_URL=redis://redis:6379/0
       - TEMPORAL_ADDRESS=temporal:7233
       - STUB_DOCX_URL=http://stub-docx:9000
@@ -104,7 +104,7 @@ services:
     build: .
     command: python app/run_worker.py --queue status --max-activities 20
     environment:
-      - LIMITER_MODE=none
+      - LIMITER_MODE=dripper
       - REDIS_URL=redis://redis:6379/0
       - TEMPORAL_ADDRESS=temporal:7233
       - STUB_DOCX_URL=http://stub-docx:9000
@@ -126,7 +126,7 @@ services:
     build: .
     command: python app/run_worker.py --queue convert --max-activities 2
     environment:
-      - LIMITER_MODE=none
+      - LIMITER_MODE=dripper
       - REDIS_URL=redis://redis:6379/0
       - TEMPORAL_ADDRESS=temporal:7233
       - STUB_DOCX_URL=http://stub-docx:9000
