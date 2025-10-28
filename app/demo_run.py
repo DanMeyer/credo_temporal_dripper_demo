@@ -1,8 +1,8 @@
 from __future__ import annotations
 import argparse, asyncio, os
 from temporalio.client import Client
-from . import config
-from .workflows import PatientIngestWorkflow
+import config
+from workflows import PatientIngestWorkflow
 
 async def run(patient_id: str):
     client = await Client.connect(config.TEMPORAL_ADDRESS)

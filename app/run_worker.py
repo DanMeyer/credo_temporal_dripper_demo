@@ -3,9 +3,9 @@ import argparse, asyncio, os
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from . import config
-from . import activities as act
-from .workflows import PatientIngestWorkflow, DocEx_PollAndFetch, ConvertAll
+import config
+import activities as act
+from workflows import PatientIngestWorkflow, DocEx_PollAndFetch, ConvertAll
 
 async def main():
     parser = argparse.ArgumentParser()

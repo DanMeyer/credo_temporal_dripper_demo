@@ -1,5 +1,5 @@
 import csv, os, time
-from . import config
+import config
 
 # Ensure CSV file has headers
 def _ensure_headers(path):

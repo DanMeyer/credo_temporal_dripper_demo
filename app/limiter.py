@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os, time, random
 from typing import Optional
-from . import config
+import config
 
 try:
     import redis

@@ -1,9 +1,9 @@
 from __future__ import annotations
 from temporalio import activity
 import asyncio, httpx, os, random
-from . import config
-from .limiter import Limiter
-from .logger import log_activity
+import config
+from limiter import Limiter
+from logger import log_activity
 
 limiter = Limiter()
 

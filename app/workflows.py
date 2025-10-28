@@ -4,7 +4,7 @@ from temporalio.common import RetryPolicy
 from typing import Optional, List
 
 with workflow.unsafe.imports_passed_through():
-    from . import activities as act
+    import activities as act
 
 @workflow.defn
 class PatientIngestWorkflow:
