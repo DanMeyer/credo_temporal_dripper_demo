@@ -57,5 +57,3 @@ Environment variables (see `docker-compose.yml`):
 - Dripper uses Redis Streams with **no backlog** catch-up (avoids bursts).
 - Each external call blocks on a token before executing when limiter enabled.
 - Conversion queue is **bulkheaded** with low concurrency to respect RAM (single-threaded converts).
-
-Have fun!

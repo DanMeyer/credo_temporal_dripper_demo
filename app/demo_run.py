@@ -12,9 +12,8 @@ async def run(patient_id: str):
         id=f"patient-{patient_id}",
         task_queue="general",
     )
-    print("Started", handle.id)
+    print("demo_run.run: Started", handle.id)
     result = await handle.result()
-    print("Result:", result)
 
 def main():
     p = argparse.ArgumentParser()

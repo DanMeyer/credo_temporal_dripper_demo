@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -99,15 +100,16 @@ class DocEx_PollAndFetch:
                 return status.get("archive_url")
             if status.get("state") in {"failed", "not_found"}:
                 return None
-            await workflow.sleep(backoff + workflow.random().random() * 0.25)
+            jitter = workflow.random().uniform(0.5, 1.5)
+            await asyncio.sleep(backoff * jitter)
             backoff = min(backoff * 2, 10.0)
 
 @workflow.defn
 class ConvertAll:
     @workflow.run
     async def run(self, files: List[str]) -> List[str]:
-        # bounded concurrency via workflow semaphore
-        sem = workflow.Semaphore(6)
+        # bounded concurrency via asyncio semaphore
+        sem = asyncio.Semaphore(6)
         results: List[str] = []
 
         async def one(f: str):
@@ -126,5 +128,5 @@ class ConvertAll:
                 )
                 results.append(pdf)
 
-        await workflow.wait_for_all([one(f) for f in files])
+        await asyncio.gather(*[one(f) for f in files])
         return results
