@@ -126,6 +126,7 @@ services:
     build: .
     command: python app/run_worker.py --queue convert --max-activities 2
     environment:
+      - CONVERT_MAX=6
       - LIMITER_MODE=dripper
       - REDIS_URL=redis://redis:6379/0
       - TEMPORAL_ADDRESS=temporal:7233

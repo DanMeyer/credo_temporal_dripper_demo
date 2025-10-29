@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import os
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -7,6 +8,9 @@ from typing import Optional, List
 
 with workflow.unsafe.imports_passed_through():
     import activities as act
+
+# Configuration
+CONVERT_MAX = int(os.getenv("CONVERT_MAX", "8"))
 
 @workflow.defn
 class PatientIngestWorkflow:
@@ -109,7 +113,7 @@ class ConvertAll:
     @workflow.run
     async def run(self, files: List[str]) -> List[str]:
         # bounded concurrency via asyncio semaphore
-        sem = asyncio.Semaphore(6)
+        sem = asyncio.Semaphore(CONVERT_MAX)
         results: List[str] = []
 
         async def one(f: str):

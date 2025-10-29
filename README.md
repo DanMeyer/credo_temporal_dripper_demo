@@ -134,8 +134,12 @@ Default **LIMITER_MODE** is `dripper`. To disable the limiter:
 
 Environment variables (see `docker-compose.yml`):
 - `LIMITER_MODE`: `none` or `dripper`
-- `CONVERT_MAX`: parallel conversion per worker host (default 2 for laptops)
+- `CONVERT_MAX`: parallel conversion per worker host
+    - Default to 8 - 2 = 6 (leave plenty of headroom)
+    - Per the prompt: File conversion is single-threaded and each file might take up to 1gb of RAM. The worker has 8 cores and 12gb of RAM.
 - `DOCEX_STATUS_RATE`: e.g., `10/sec`
 - `DOCEX_SEARCH_RATE`: e.g., `10/min`
 - `TASKTRACKER_RATE`: e.g., `10/sec`
 - `REDIS_URL`, `TEMPORAL_ADDRESS`, `STUB_DOCX_URL`, `STUB_TT_URL`
+
+
