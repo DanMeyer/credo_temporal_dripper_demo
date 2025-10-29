@@ -1,4 +1,4 @@
-# Credo Temporal Dripper Demo
+# Reflection
 
 ## Highlights:
 - **Temporal** workflows with **child workflows** (`DocEx_PollAndFetch`, `ConvertAll`)
@@ -18,6 +18,16 @@ Some strategies:
     - we want to keep retrying the service forever (so we can self-heal) BUT at increasing intervals (so we don't try every N seconds for 2 straight hours for every workflow)
 - circuit breaker around the external resource (stop trying for M minutes after N failures)
     - ideally can resume smartly for everyone after a success
+
+## Notes
+- Initially, I fed the prompt into ChatGPT and "negotiated" a solution plan
+    - e.g. I interrogated it about different rate limiting options before settling on the `dripper`
+- I let ChatGPT take a crack at building the whole thing. It did a pretty decent job - including suggesting setting up the fake little HTTP endpoints. That's probably something I wouldn't have necessarily hand-coded, but was happy to have generated for me (because it was a throwaway for development)
+- Then, I moved into cursor to code review, debug, etc
+- I spent at least an hour (maybe two?) wrestling with Docker/Temporal/Postgres settings. The root cause, I think, was that the `temporalio/auto-setup` image has changed a bit recently. It dropped support for SQLite, and some variable names changed. So Cursor and ChatGPT weren't super helpful with the ultimate solution: I had to find a canonical docker compose file from Temporal and work from that. Cursor was very helpful, though, at running Docker commands to spin things up, tear things down, and look at logs (all stuff that would eventually just be in my fingers)
+- ChatGPT hallucinated a few minor things, e.g. that `sleep` lived on the `workflow` instead of being an `asyncio` function. But there was pretty minimal debugging to do to get things running.
+
+# How to Configure and Run
 
 ## Quickstart
 
