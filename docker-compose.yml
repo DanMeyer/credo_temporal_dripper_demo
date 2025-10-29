@@ -124,9 +124,8 @@ services:
 
   worker-convert:
     build: .
-    command: python app/run_worker.py --queue convert --max-activities 2
+    command: python app/run_worker.py --queue convert --max-activities 2 # 6 in production, per the prompt
     environment:
-      - CONVERT_MAX=6
       - LIMITER_MODE=dripper
       - REDIS_URL=redis://redis:6379/0
       - TEMPORAL_ADDRESS=temporal:7233
@@ -137,8 +136,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 4g
+          cpus: "2" # "8" in production, per the prompt
+          memory: 4g # "12g" in production, per the prompt
     depends_on:
       temporal:
         condition: service_healthy

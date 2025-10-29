@@ -1,6 +1,5 @@
 from __future__ import annotations
 import asyncio
-import os
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -8,9 +7,6 @@ from typing import Optional, List
 
 with workflow.unsafe.imports_passed_through():
     import activities as act
-
-# Configuration
-CONVERT_MAX = int(os.getenv("CONVERT_MAX", "8"))
 
 @workflow.defn
 class PatientIngestWorkflow:
@@ -112,25 +108,23 @@ class DocEx_PollAndFetch:
 class ConvertAll:
     @workflow.run
     async def run(self, files: List[str]) -> List[str]:
-        # bounded concurrency via asyncio semaphore
-        sem = asyncio.Semaphore(CONVERT_MAX)
+        # Concurrency controlled by worker pool max_concurrent_activities
         results: List[str] = []
 
         async def one(f: str):
-            async with sem:
-                pdf = await workflow.execute_activity(
-                    act.convert_file,
-                    args=[f],
-                    schedule_to_close_timeout=timedelta(seconds=30),
-                    task_queue="convert",
-                )
-                await workflow.execute_activity(
-                    act.put_to_storage,
-                    args=[pdf],
-                    schedule_to_close_timeout=timedelta(seconds=10),
-                    task_queue="convert",
-                )
-                results.append(pdf)
+            pdf = await workflow.execute_activity(
+                act.convert_file,
+                args=[f],
+                schedule_to_close_timeout=timedelta(seconds=30),
+                task_queue="convert",
+            )
+            await workflow.execute_activity(
+                act.put_to_storage,
+                args=[pdf],
+                schedule_to_close_timeout=timedelta(seconds=10),
+                task_queue="convert",
+            )
+            results.append(pdf)
 
         await asyncio.gather(*[one(f) for f in files])
         return results

@@ -4,8 +4,7 @@
 - **Temporal** workflows with **child workflows** (`DocEx_PollAndFetch`, `ConvertAll`)
 - **Dripper** strategy for API rate limiting via tokens (via Redis Streams)
 - **Sharded task queues** (`general`, `status`, `convert`)
-    - `CONVERT_MAX` env variable limits the number of `convert` tasks
-- **Docker Compose** for local runs
+    - We limit the maximum number of activities per `convert` worker in order to deal with resource constraints during expensive conversions
 - **HTTP fakes** for DocumentExchange and TaskTracker
 - Dummy Activities that **sleep and CSV-log** start/finish and args
 
@@ -25,7 +24,10 @@ Some strategies:
 - I let ChatGPT take a crack at building the whole thing. It did a pretty decent job - including suggesting setting up the fake little HTTP endpoints. That's probably something I wouldn't have necessarily hand-coded, but was happy to have generated for me (because it was a throwaway for development)
 - Then, I moved into cursor to code review, debug, etc
 - I spent at least an hour (maybe two?) wrestling with Docker/Temporal/Postgres settings. The root cause, I think, was that the `temporalio/auto-setup` image has changed a bit recently. It dropped support for SQLite, and some variable names changed. So Cursor and ChatGPT weren't super helpful with the ultimate solution: I had to find a canonical docker compose file from Temporal and work from that. Cursor was very helpful, though, at running Docker commands to spin things up, tear things down, and look at logs (all stuff that would eventually just be in my fingers)
-- ChatGPT hallucinated a few minor things, e.g. that `sleep` lived on the `workflow` instead of being an `asyncio` function. But there was pretty minimal debugging to do to get things running.
+- ChatGPT definitely got some things wrong that I had to correct:
+    - It thought that `sleep` lived on the `workflow` instead of being an `asyncio` function. But there was pretty minimal debugging to do to get things running
+    - It used a semaphore to limit concurrent conversions per *workflow* (not *per worker*)
+- If I were doing this more bandwidth, I'd for sure give this a much-more-thorough code review. It wouldn't shock me if I did that and ended up taking issue with some of the naming and readability especially. I call this out because I know you've mentioned code review a few differnent times, Avi, so I imagine code quality is top of mind. I honestly just ran out of daylight.
 
 # How to Configure and Run
 
@@ -134,12 +136,29 @@ Default **LIMITER_MODE** is `dripper`. To disable the limiter:
 
 Environment variables (see `docker-compose.yml`):
 - `LIMITER_MODE`: `none` or `dripper`
-- `CONVERT_MAX`: parallel conversion per worker host
-    - Default to 8 - 2 = 6 (leave plenty of headroom)
-    - Per the prompt: File conversion is single-threaded and each file might take up to 1gb of RAM. The worker has 8 cores and 12gb of RAM.
 - `DOCEX_STATUS_RATE`: e.g., `10/sec`
 - `DOCEX_SEARCH_RATE`: e.g., `10/min`
 - `TASKTRACKER_RATE`: e.g., `10/sec`
 - `REDIS_URL`, `TEMPORAL_ADDRESS`, `STUB_DOCX_URL`, `STUB_TT_URL`
 
+## Resource Configuration
+
+**Convert Worker Concurrency**: The `worker-convert` service uses hardcoded values that are tightly coupled to resource limits:
+
+- **`--max-activities 2`** (development) / **`--max-activities 6`** (development): Maximum concurrent conversion activities
+- **CPU limit**: `2` cores (development) / `8` cores (production)
+- **Memory limit**: `4g` (development) / `12g` (production)
+
+**Rationale**: 
+- Each conversion can use up to 1GB RAM (per prompt requirements)
+- With 4GB memory limit: 6 concurrent activities = ~6GB theoretical usage (safe margin)
+- With 12GB memory limit: Could theoretically handle 12 concurrent (if we had 100% of RAM to ourselves, which we likely won't), but CPU cores become the bottleneck
+- The `6` value provides a reasonable balance for both development and production scenarios
+
+**To adjust**: Modify both `--max-activities` and resource limits in `docker-compose.yml` together.
+
+**Future options** include:
+- using environment variables (e.g. `--max-activities ${CONVERT_MAX_ACTIVITIES:-6}`)
+- using Docker Compose Profiles
+- having separate compose files for e.g. prod and dev
 
